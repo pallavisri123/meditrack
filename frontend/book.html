@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book Appointment — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Book Appointment</h1>
+    <p>Department → Doctor → Availability → Date → Time slot → Confirmation. Double booking is blocked by the database.</p></div>
+
+  <div class="card"><h2>1️⃣ Select department</h2><div class="chips" id="depts"></div></div>
+  <div class="card"><h2>2️⃣ Select doctor</h2><div class="grid g3" id="docs"><div class="empty">Choose a department first.</div></div></div>
+  <div class="card"><h2>3️⃣ Select date &amp; time slot</h2><div id="slots"><div class="empty">Choose a doctor first.</div></div></div>
+  <div class="card"><h2>4️⃣ Confirm</h2>
+    <div class="form-grid">
+      <div class="full"><label>Reason for visit</label><textarea id="reason" placeholder="Describe your symptoms briefly"></textarea></div>
+    </div>
+    <div id="summary" class="muted"></div>
+    <div class="actions">
+      <button class="btn green" id="confirm" disabled>✅ Confirm appointment</button>
+      <button class="btn ghost" onclick="location.reload()">✖ Cancel</button>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a>
+    </div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("book.html");
+const pid = guard();
+const qp = new URLSearchParams(location.search);
+let sel = { dept: null, doctor: null, date: qp.get("date"), time: qp.get("time") };
+
+async function loadDepts() {
+  const d = await api.get("/departments");
+  document.getElementById("depts").innerHTML = d.map(x =>
+    `<span class="chip" data-d="${x.id}" onclick="pickDept(${x.id})">${esc(x.name)}</span>`).join("");
+}
+async function pickDept(id) {
+  sel.dept = id; sel.doctor = null;
+  document.querySelectorAll("[data-d]").forEach(c => c.classList.toggle("active", c.dataset.d == id));
+  const docs = await api.get(`/doctors?department_id=${id}`);
+  document.getElementById("docs").innerHTML = docs.map(x => `
+    <div class="doc-card"><div class="name">${esc(x.name)}</div>
+      <div class="muted">${esc(x.specialization)}</div>
+      <div class="chips" style="margin:8px 0"><span class="badge grey">${x.experience_years} yrs</span>
+        <span class="badge green">₹${x.consultation_fee}</span></div>
+      <div class="actions"><button class="btn sm" onclick="pickDoctor(${x.id},'${esc(x.name)}')">Select</button>
+        <a class="btn sm ghost" href="doctor-profile.html?id=${x.id}">Profile</a></div></div>`).join("");
+  document.getElementById("slots").innerHTML = `<div class="empty">Choose a doctor first.</div>`;
+  update();
+}
+async function pickDoctor(id, name) {
+  sel.doctor = { id, name };
+  const av = await api.get(`/doctors/${id}/availability`);
+  document.getElementById("slots").innerHTML = av.length ? av.map(day => `
+    <div style="margin-bottom:14px"><b>${fmtDate(day.date)}</b> <span class="muted">(${esc(day.day)})</span>
+      <div class="chips" style="margin-top:7px">${day.slots.map(s => s.booked
+        ? `<span class="chip booked">${esc(s.time)}</span>`
+        : `<span class="chip slot" data-date="${day.date}" data-time="${s.time}"
+             onclick="pickSlot('${day.date}','${s.time}')">${esc(s.time)}</span>`).join("")}</div></div>`).join("")
+    : `<div class="empty">No slots available for this doctor.</div>`;
+  update();
+}
+function pickSlot(d, t) {
+  sel.date = d; sel.time = t;
+  document.querySelectorAll(".slot").forEach(c =>
+    c.classList.toggle("active", c.dataset.date === d && c.dataset.time === t));
+  update();
+}
+function update() {
+  const ok = sel.doctor && sel.date && sel.time;
+  document.getElementById("confirm").disabled = !ok;
+  document.getElementById("summary").innerHTML = ok
+    ? `Booking with <b>${esc(sel.doctor.name)}</b> on <b>${fmtDate(sel.date)}</b> at <b>${esc(sel.time)}</b>.`
+    : "Select a department, doctor, date and time slot to continue.";
+}
+document.getElementById("confirm").onclick = async () => {
+  try {
+    const a = await api.post("/appointments", {
+      patient_id: Number(pid), doctor_id: sel.doctor.id,
+      slot_date: sel.date, slot_time: sel.time,
+      reason: document.getElementById("reason").value.trim(),
+    });
+    location.href = `confirmation.html?id=${a.id}`;
+  } catch (e) { toast(e.message, "bad"); }
+};
+(async () => {
+  await loadDepts();
+  const did = qp.get("doctor_id");
+  if (did) {
+    const d = await api.get(`/doctors/${did}`);
+    await pickDept(d.department_id);
+    await pickDoctor(d.id, d.name);
+    if (sel.date && sel.time) pickSlot(sel.date, sel.time);
+  }
+})();
+</script></body></html>

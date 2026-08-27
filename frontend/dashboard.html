@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — MediTrack</title><link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"><\/script>');</script>
+</head>
+<body>
+<div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+
+  <div class="hello-card">
+    <h1 id="hello">Good Morning 👋</h1>
+    <p id="subline">Here is your healthcare overview for today.</p>
+    <div id="sampleDataPrompt" style="display:none;margin-top:12px">
+      <button class="btn" id="sampleDataBtn" style="background:#fff;color:var(--blue-dark)">✨ Load Sample Data to Preview Charts</button>
+    </div>
+  </div>
+
+  <div class="summary-cards" id="summaryCards">
+    <!-- filled by JS; skeleton shown first -->
+  </div>
+
+  <div class="chart-grid two" style="margin-top:4px">
+    <div class="chart-card">
+      <h3>📈 Appointment Trends</h3>
+      <div class="chart-wrap" id="wrapTrend"><canvas id="chartTrend"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>🩺 Appointment Status</h3>
+      <div class="chart-wrap" id="wrapStatus"><canvas id="chartStatus"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-grid" style="margin-top:16px">
+    <div class="chart-card">
+      <h3>📊 Monthly Healthcare Activity</h3>
+      <div class="chart-wrap" id="wrapActivity"><canvas id="chartActivity"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-grid two" style="margin-top:16px">
+    <div class="chart-card">
+      <h3>💊 Prescription Overview</h3>
+      <div class="chart-wrap sm" id="wrapRx"><canvas id="chartRx"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>🧪 Lab Test Status</h3>
+      <div class="chart-wrap sm" id="wrapLab"><canvas id="chartLab"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h2>📅 Upcoming Appointments</h2><div id="upcoming"><div class="skel-row"></div><div class="skel-row"></div></div>
+      <div class="actions"><a class="btn" href="book.html">Book new appointment</a>
+        <a class="btn ghost" href="appointments.html">View all</a></div></div>
+    <div class="card"><h2>🧬 Recent Medical Activity</h2><div id="recent"><div class="skel-row"></div><div class="skel-row"></div></div>
+      <div class="actions"><a class="btn ghost" href="history.html">Full medical history</a></div></div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>⚡ Quick Actions</h2>
+    <div class="quick-actions">
+      <a class="qa-btn" href="book.html"><span class="qi">📅</span>Book Appointment</a>
+      <a class="qa-btn" href="doctors.html"><span class="qi">🔎</span>Find Doctor</a>
+      <a class="qa-btn" href="history.html"><span class="qi">🧬</span>Medical History</a>
+      <a class="qa-btn" href="prescriptions.html"><span class="qi">💊</span>Prescriptions</a>
+      <a class="qa-btn" href="lab-tests.html"><span class="qi">🧪</span>Lab Reports</a>
+      <a class="qa-btn" href="billing.html"><span class="qi">🧾</span>Billing &amp; Payments</a>
+      <a class="qa-btn emergency" href="emergency.html"><span class="qi">🚨</span>Emergency</a>
+    </div>
+  </div>
+
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("dashboard.html");
+const pid = guard();
+let charts = {};
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening";
+}
+
+const CARD_DEFS = [
+  ["upcoming_count", "📅", "Upcoming Appointments", ""],
+  ["completed_count", "✅", "Completed Appointments", "c-green"],
+  ["active_prescriptions", "💊", "Active Prescriptions", "c-green"],
+  ["medical_records_count", "🗂️", "Medical Records", ""],
+  ["pending_lab_tests", "🧪", "Pending Lab Tests", "c-orange"],
+  ["unread_notifications", "🔔", "Notifications", "c-red"],
+];
+
+function renderSummarySkeleton() {
+  document.getElementById("summaryCards").innerHTML = CARD_DEFS.map(() =>
+    `<div class="sum-card"><div class="skel-block" style="height:70px"></div></div>`).join("");
+}
+
+function renderSummary(d) {
+  document.getElementById("summaryCards").innerHTML = CARD_DEFS.map(([key, icon, label, cls]) => `
+    <div class="sum-card ${cls}">
+      <div class="icon">${icon}</div>
+      <div class="v">${d[key] ?? 0}</div>
+      <div class="l">${label}</div>
+    </div>`).join("");
+}
+
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
+
+function emptyChart(wrapId, msg) {
+  document.getElementById(wrapId).innerHTML = `<div class="empty" style="padding:60px 10px">${msg}</div>`;
+}
+
+async function loadTrend() {
+  try {
+    const r = await api.get(`/dashboard/appointments-trend?patient_id=${pid}`);
+    if (!r.values.some(v => v > 0)) return emptyChart("wrapTrend", "No appointment history yet to chart.");
+    destroyChart("trend");
+    charts.trend = new Chart(document.getElementById("chartTrend"), {
+      type: "line",
+      data: { labels: r.labels, datasets: [{ label: "Appointments", data: r.values,
+        borderColor: "#0b63d6", backgroundColor: "rgba(11,99,214,.12)", tension: .35, fill: true, pointRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+        plugins: { legend: { display: false }, tooltip: { mode: "index", intersect: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  } catch (e) { document.getElementById("wrapTrend").innerHTML = ""; document.getElementById("wrapTrend").appendChild(errorState(e.message, loadTrend)); }
+}
+
+async function loadStatus() {
+  try {
+    const r = await api.get(`/dashboard/appointment-status?patient_id=${pid}`);
+    if (!r.values.some(v => v > 0)) return emptyChart("wrapStatus", "No appointments recorded yet.");
+    destroyChart("status");
+    charts.status = new Chart(document.getElementById("chartStatus"), {
+      type: "doughnut",
+      data: { labels: r.labels, datasets: [{ data: r.values,
+        backgroundColor: ["#0b63d6", "#12a37a", "#d93030", "#e0a021"] }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } }
+    });
+  } catch (e) { document.getElementById("wrapStatus").innerHTML = ""; document.getElementById("wrapStatus").appendChild(errorState(e.message, loadStatus)); }
+}
+
+async function loadActivity() {
+  try {
+    const r = await api.get(`/dashboard/medical-activity?patient_id=${pid}`);
+    const hasData = r.series.some(s => s.values.some(v => v > 0));
+    if (!hasData) return emptyChart("wrapActivity", "No medical activity recorded yet.");
+    destroyChart("activity");
+    const colors = ["#0b63d6", "#12a37a", "#e0a021", "#63758c"];
+    charts.activity = new Chart(document.getElementById("chartActivity"), {
+      type: "bar",
+      data: { labels: r.labels, datasets: r.series.map((s, i) => ({ label: s.name, data: s.values,
+        backgroundColor: colors[i % colors.length], borderRadius: 4 })) },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  } catch (e) { document.getElementById("wrapActivity").innerHTML = ""; document.getElementById("wrapActivity").appendChild(errorState(e.message, loadActivity)); }
+}
+
+async function loadRx() {
+  try {
+    const r = await api.get(`/dashboard/prescriptions?patient_id=${pid}`);
+    const hasData = r.series.some(s => s.values.some(v => v > 0));
+    if (!hasData) return emptyChart("wrapRx", "No active prescriptions found.");
+    destroyChart("rx");
+    charts.rx = new Chart(document.getElementById("chartRx"), {
+      type: "bar",
+      data: { labels: r.labels, datasets: [
+        { label: "Active", data: r.series[0].values, backgroundColor: "#12a37a", borderRadius: 4 },
+        { label: "Completed", data: r.series[1].values, backgroundColor: "#9fb3c8", borderRadius: 4 },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { stacked: false } } }
+    });
+  } catch (e) { document.getElementById("wrapRx").innerHTML = ""; document.getElementById("wrapRx").appendChild(errorState(e.message, loadRx)); }
+}
+
+async function loadLab() {
+  try {
+    const r = await api.get(`/dashboard/lab-tests?patient_id=${pid}`);
+    if (!r.values.some(v => v > 0)) return emptyChart("wrapLab", "No lab tests available.");
+    destroyChart("lab");
+    charts.lab = new Chart(document.getElementById("chartLab"), {
+      type: "pie",
+      data: { labels: r.labels, datasets: [{ data: r.values,
+        backgroundColor: ["#e0a021", "#12a37a", "#0b63d6"] }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 600 },
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } } }
+    });
+  } catch (e) { document.getElementById("wrapLab").innerHTML = ""; document.getElementById("wrapLab").appendChild(errorState(e.message, loadLab)); }
+}
+
+async function loadDashboard() {
+  renderSummarySkeleton();
+  if (typeof Chart === "undefined") {
+    document.querySelectorAll(".chart-wrap").forEach(el =>
+      el.innerHTML = `<div class="empty">Chart library failed to load — check your internet connection and refresh.</div>`);
+  }
+  try {
+    const d = await api.get(`/patients/${pid}/dashboard`);
+    document.getElementById("hello").textContent = `${greeting()}, ${d.patient.full_name.split(" ")[0]} 👋`;
+    document.getElementById("subline").textContent = "Here is your healthcare overview for today.";
+    renderSummary(d);
+
+    if (d.total_appointments === 0) {
+      document.getElementById("sampleDataPrompt").style.display = "block";
+      document.getElementById("sampleDataBtn").onclick = async () => {
+        const btn = document.getElementById("sampleDataBtn");
+        btn.disabled = true; btn.textContent = "Generating…";
+        try {
+          await api.post(`/patients/${pid}/generate-sample-data`);
+          toast("Sample data added — refreshing your dashboard");
+          document.getElementById("sampleDataPrompt").style.display = "none";
+          loadDashboard();
+        } catch (e) { toast(e.message || "Could not generate sample data", "bad"); btn.disabled = false; btn.textContent = "✨ Load Sample Data to Preview Charts"; }
+      };
+    } else {
+      document.getElementById("sampleDataPrompt").style.display = "none";
+    }
+
+    document.getElementById("upcoming").innerHTML = d.upcoming_appointments.length
+      ? `<div class="table-wrap"><table><thead><tr><th>Doctor</th><th>Department</th><th>Date &amp; Time</th><th>Status</th><th></th></tr></thead><tbody>` +
+        d.upcoming_appointments.map(a => `<tr><td><b>${esc(a.doctor_name)}</b></td>
+          <td>${esc(a.department)}</td>
+          <td>${fmtDate(a.slot_date)}<div class="muted">${esc(a.slot_time)}</div></td>
+          <td>${statusBadge(a.status)}</td>
+          <td><a class="btn sm ghost" href="appointments.html">View</a></td></tr>`).join("") + `</tbody></table></div>`
+      : `<div class="empty">You don't have any upcoming appointments.<div class="actions" style="justify-content:center"><a class="btn" href="book.html">Book Appointment</a></div></div>`;
+
+    document.getElementById("recent").innerHTML = d.recent_activity.length
+      ? `<div class="timeline">` + d.recent_activity.map(r => `<div class="tl-item ${esc(r.event_type)}">
+          <h4>${esc(r.title)}</h4><div class="when">${esc(r.event_type)} • ${esc(r.event_date)}</div></div>`).join("") + `</div>`
+      : `<div class="empty">No recent medical activity.</div>`;
+
+    loadTrend(); loadStatus(); loadActivity(); loadRx(); loadLab();
+  } catch (e) {
+    document.getElementById("summaryCards").innerHTML = "";
+    document.getElementById("summaryCards").appendChild(errorState(e.message || "Unable to load your healthcare data. Please try again.", loadDashboard));
+  }
+}
+loadDashboard();
+</script>
+</body></html>

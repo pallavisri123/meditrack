@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Consultations — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Consultations</h1>
+    <p>Appointment → Symptoms → Diagnosis → Treatment → Prescription → Medical History.</p></div>
+
+  <form class="card" id="cf">
+    <h2>🩺 Consultation record</h2>
+    <div class="form-grid">
+      <div class="full"><label>Appointment <span class="req">*</span></label>
+        <select id="appointment_id"></select><span class="err"></span></div>
+      <div class="full"><label>Symptoms <span class="req">*</span></label><textarea id="symptoms"></textarea></div>
+      <div><label>Diagnosis <span class="req">*</span></label><textarea id="diagnosis"></textarea></div>
+      <div><label>Treatment <span class="req">*</span></label><textarea id="treatment"></textarea></div>
+      <div class="full"><label>Doctor notes</label><textarea id="notes"></textarea></div>
+      <div><label>Follow-up date</label><input type="date" id="followup_date"></div>
+      <div><label>Prescription instructions</label><input id="instructions" placeholder="e.g. Take after food, drink 3L water"></div>
+    </div>
+
+    <fieldset style="margin-top:16px"><legend>💊 Prescription medicines</legend>
+      <div id="meds"></div>
+      <button type="button" class="btn sm" onclick="addMed()">＋ Add medicine</button>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="btn green" id="saveBtn">💾 Save consultation</button>
+      <button type="button" class="btn" id="updBtn" style="display:none" onclick="save(true)">🔄 Update</button>
+      <button type="button" class="btn ghost" onclick="resetForm()">✖ Cancel</button>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a>
+    </div>
+  </form>
+
+  <div class="card"><h2>📚 Consultation history</h2>
+    <div class="search-row"><input id="q" placeholder="Search diagnosis, doctor or symptoms" oninput="renderList()">
+      <button class="btn ghost" onclick="document.getElementById('q').value='';renderList()">Reset</button></div>
+    <div id="list"></div></div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("consultations.html");
+const pid = guard();
+let rows = [], editing = null;
+
+function medRow(m = {}) {
+  const div = document.createElement("div");
+  div.className = "form-grid med";
+  div.style.cssText = "margin-bottom:10px;align-items:end";
+  div.innerHTML = `
+    <div><label>Medicine</label><input class="m_name" value="${esc(m.medicine||"")}"></div>
+    <div><label>Dosage</label><input class="m_dose" placeholder="500 mg" value="${esc(m.dosage||"")}"></div>
+    <div><label>Frequency</label><input class="m_freq" placeholder="1-0-1" value="${esc(m.frequency||"")}"></div>
+    <div><label>Duration</label><input class="m_dur" placeholder="5 days" value="${esc(m.duration||"")}"></div>
+    <div><label>Instructions</label><input class="m_note" value="${esc(m.notes||"")}"></div>
+    <div><button type="button" class="btn sm red" onclick="this.closest('.med').remove()">Remove</button></div>`;
+  document.getElementById("meds").appendChild(div);
+}
+function addMed(m) { medRow(m); }
+
+async function loadAppointments() {
+  const list = await api.get(`/appointments?patient_id=${pid}`);
+  const usable = list.filter(a => a.status !== "Cancelled" && !a.has_consultation);
+  const sel = document.getElementById("appointment_id");
+  sel.innerHTML = usable.length
+    ? usable.map(a => `<option value="${a.id}">${esc(a.appointment_code)} — ${esc(a.doctor_name)} (${fmtDate(a.slot_date)} ${esc(a.slot_time)})</option>`).join("")
+    : `<option value="">No open appointments — book one first</option>`;
+  const pre = new URLSearchParams(location.search).get("appointment_id");
+  if (pre) sel.value = pre;
+}
+async function loadList() { rows = await api.get(`/consultations?patient_id=${pid}`); renderList(); }
+function renderList() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const f = rows.filter(r => !q || (r.diagnosis + r.doctor_name + r.symptoms).toLowerCase().includes(q));
+  document.getElementById("list").innerHTML = f.length
+    ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Doctor</th><th>Symptoms</th>
+       <th>Diagnosis</th><th>Treatment</th><th>Follow-up</th><th>Actions</th></tr></thead><tbody>` +
+      f.map(c => `<tr><td>${fmtDate(c.consultation_date)}</td>
+        <td>${esc(c.doctor_name)}<div class="muted">${esc(c.department)}</div></td>
+        <td>${dash(c.symptoms)}</td><td><b>${dash(c.diagnosis)}</b></td><td>${dash(c.treatment)}</td>
+        <td>${c.followup_date ? `<span class="badge green">${fmtDate(c.followup_date)}</span>` : "—"}</td>
+        <td><button class="btn sm ghost" onclick="edit(${c.id})">Edit</button>
+          ${c.prescription_id ? `<a class="btn sm green" href="prescriptions.html?id=${c.prescription_id}">Prescription</a>` : ""}
+          <button class="btn sm red" onclick="del(${c.id})">Delete</button></td></tr>`).join("")
+      + `</tbody></table></div>`
+    : `<div class="empty">No consultations recorded yet.</div>`;
+}
+function collect() {
+  return {
+    appointment_id: Number(document.getElementById("appointment_id").value),
+    symptoms: symptoms.value.trim(), diagnosis: diagnosis.value.trim(),
+    treatment: treatment.value.trim(), notes: notes.value.trim(),
+    followup_date: followup_date.value || null,
+    instructions: instructions.value.trim(),
+    medicines: [...document.querySelectorAll(".med")].map(r => ({
+      medicine: r.querySelector(".m_name").value.trim(),
+      dosage: r.querySelector(".m_dose").value.trim(),
+      frequency: r.querySelector(".m_freq").value.trim(),
+      duration: r.querySelector(".m_dur").value.trim(),
+      notes: r.querySelector(".m_note").value.trim(),
+    })).filter(m => m.medicine),
+  };
+}
+document.getElementById("cf").addEventListener("submit", e => { e.preventDefault(); save(false); });
+async function save(isUpdate) {
+  const d = collect();
+  if (!isUpdate && !d.appointment_id) { toast("Select an appointment first", "bad"); return; }
+  if (!d.symptoms || !d.diagnosis || !d.treatment) { toast("Symptoms, diagnosis and treatment are required", "bad"); return; }
+  try {
+    if (isUpdate && editing) { await api.put(`/consultations/${editing}`, d); toast("Consultation updated"); }
+    else { await api.post("/consultations", d); toast("Consultation saved and linked to your medical history"); }
+    resetForm(); await loadAppointments(); await loadList();
+  } catch (e) { toast(e.message, "bad"); }
+}
+async function edit(id) {
+  const c = rows.find(r => r.id === id);
+  editing = id;
+  const sel = document.getElementById("appointment_id");
+  sel.innerHTML = `<option value="${c.appointment_id}">${esc(c.appointment_code)} — ${esc(c.doctor_name)}</option>`;
+  symptoms.value = c.symptoms; diagnosis.value = c.diagnosis; treatment.value = c.treatment;
+  notes.value = c.notes; followup_date.value = c.followup_date || "";
+  document.getElementById("meds").innerHTML = "";
+  if (c.prescription_id) {
+    const rx = await api.get(`/prescriptions/${c.prescription_id}`);
+    instructions.value = rx.instructions; rx.medicines.forEach(addMed);
+  }
+  document.getElementById("saveBtn").style.display = "none";
+  document.getElementById("updBtn").style.display = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+async function del(id) {
+  if (!confirm("Delete this consultation and its prescription?")) return;
+  await api.del(`/consultations/${id}`); toast("Consultation deleted");
+  await loadAppointments(); loadList();
+}
+function resetForm() {
+  editing = null; document.getElementById("cf").reset();
+  document.getElementById("meds").innerHTML = ""; addMed();
+  document.getElementById("saveBtn").style.display = "";
+  document.getElementById("updBtn").style.display = "none";
+  loadAppointments();
+}
+addMed(); loadAppointments(); loadList();
+</script></body></html>

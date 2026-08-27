@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Appointments — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>My Appointments</h1><p>View, search, reschedule or cancel — full appointment history.</p></div>
+  <div class="card">
+    <div class="search-row">
+      <input id="q" placeholder="Search code, doctor, department or date">
+      <select id="st"><option value="">All</option><option>Booked</option><option>Completed</option><option>Cancelled</option></select>
+      <button class="btn" onclick="load()">Search</button>
+      <button class="btn ghost" onclick="document.getElementById('q').value='';document.getElementById('st').value='';load()">Reset</button>
+      <a class="btn green" href="book.html">＋ Book</a><a class="btn ghost" href="dashboard.html">⬅ Dashboard</a>
+    </div>
+    <div id="tbl"></div>
+  </div>
+</main></div>
+
+<div class="modal" id="rs"><div class="box">
+  <h2>Reschedule appointment</h2><div id="rsSlots"></div>
+  <div class="actions"><button class="btn ghost" onclick="document.getElementById('rs').classList.remove('open')">Close</button></div>
+</div></div>
+
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("appointments.html");
+const pid = guard();
+async function load() {
+  const q = document.getElementById("q").value.trim(), st = document.getElementById("st").value;
+  const p = new URLSearchParams({ patient_id: pid });
+  if (q) p.set("q", q); if (st) p.set("status", st);
+  const rows = await api.get("/appointments?" + p);
+  document.getElementById("tbl").innerHTML = rows.length
+    ? `<div class="table-wrap"><table><thead><tr><th>Code</th><th>Doctor</th><th>Department</th>
+       <th>Date</th><th>Time</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead><tbody>` +
+      rows.map(a => `<tr><td><b>${esc(a.appointment_code)}</b></td><td>${esc(a.doctor_name)}</td>
+        <td>${esc(a.department)}</td><td>${fmtDate(a.slot_date)}</td><td>${esc(a.slot_time)}</td>
+        <td>${dash(a.reason)}</td><td>${statusBadge(a.status)}</td>
+        <td>
+          <a class="btn sm ghost" href="confirmation.html?id=${a.id}">View</a>
+          ${a.status === "Booked" ? `<button class="btn sm" onclick="openRs(${a.id},${a.doctor_id})">Reschedule</button>
+             <button class="btn sm red" onclick="cancel(${a.id})">Cancel</button>
+             <a class="btn sm green" href="consultations.html?appointment_id=${a.id}">Consult</a>` : ""}
+          ${a.has_consultation ? `<a class="btn sm green" href="consultations.html">Record</a>` : ""}
+        </td></tr>`).join("") + `</tbody></table></div>`
+    : `<div class="empty">No appointments found.</div>`;
+}
+async function cancel(id) {
+  if (!confirm("Cancel this appointment? The slot will be released.")) return;
+  await api.put(`/appointments/${id}/cancel`); toast("Appointment cancelled"); load();
+}
+let rsId = null;
+async function openRs(id, docId) {
+  rsId = id;
+  const av = await api.get(`/doctors/${docId}/availability`);
+  document.getElementById("rsSlots").innerHTML = av.map(day => `
+    <div style="margin-bottom:12px"><b>${fmtDate(day.date)}</b>
+      <div class="chips" style="margin-top:6px">${day.slots.map(s => s.booked
+        ? `<span class="chip booked">${esc(s.time)}</span>`
+        : `<span class="chip" onclick="doRs('${day.date}','${s.time}')">${esc(s.time)}</span>`).join("")}</div></div>`).join("")
+    || `<div class="empty">No free slots.</div>`;
+  document.getElementById("rs").classList.add("open");
+}
+async function doRs(d, t) {
+  try {
+    await api.put(`/appointments/${rsId}/reschedule?slot_date=${d}&slot_time=${encodeURIComponent(t)}`);
+    document.getElementById("rs").classList.remove("open");
+    toast("Appointment rescheduled"); load();
+  } catch (e) { toast(e.message, "bad"); }
+}
+load();
+</script></body></html>

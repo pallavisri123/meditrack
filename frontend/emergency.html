@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emergency — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1 style="color:var(--red)">🚨 Emergency Centre</h1>
+    <p>Instant access to your critical medical details, blood availability and ambulance dispatch.</p></div>
+
+  <div class="emergency-banner">For life-threatening emergencies call <b>108</b> immediately.
+    MediTrack emergency desk: <b>1800-123-4567</b></div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card" style="border-left:5px solid var(--red)"><h2>🆘 Emergency Health Card</h2><div id="card"></div>
+      <div class="actions"><button class="btn ghost" onclick="window.print()">🖨 Print card</button></div></div>
+    <div class="card"><h2>🚑 Ambulance Request</h2>
+      <div class="form-grid">
+        <div class="full"><label>Pickup address <span class="req">*</span></label><textarea id="addr"></textarea></div>
+        <div><label>Contact number <span class="req">*</span></label><input id="phone"></div>
+        <div><label>Emergency type</label><select id="type">
+          <option>General</option><option>Cardiac</option><option>Accident / Trauma</option>
+          <option>Breathing difficulty</option><option>Pregnancy</option></select></div>
+      </div>
+      <div class="actions"><button class="btn red" onclick="requestAmb()">🚑 Request ambulance now</button>
+        <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a></div>
+      <div id="ambList" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <div class="card"><h2>🩸 Blood Bank Availability</h2><div class="grid g4" id="blood"></div></div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("emergency.html");
+const pid = guard();
+(async () => {
+  const c = await api.get(`/patients/${pid}/emergency-card`);
+  document.getElementById("card").innerHTML = `
+    <div class="grid g2">
+      <div><div class="l muted">Patient</div><b>${esc(c.full_name)} (${esc(c.patient_code)})</b></div>
+      <div><div class="l muted">Age</div><b>${c.age}</b></div>
+      <div><div class="l muted">Blood group</div><span class="badge red" style="font-size:15px">${esc(c.blood_group)}</span></div>
+      <div><div class="l muted">Emergency contact</div><b>${esc(c.emergency_contact_name)} — ${esc(c.emergency_contact_number)}</b></div>
+      <div class="full"><div class="l muted">Allergies</div><b style="color:var(--red)">${esc(c.allergies)}</b></div>
+      <div class="full"><div class="l muted">Existing conditions</div><b>${esc(c.conditions)}</b></div>
+      <div class="full"><div class="l muted">Current medications</div><b>${esc(c.current_medications)}</b></div>
+    </div>`;
+  document.getElementById("phone").value = c.emergency_contact_number;
+
+  const blood = await api.get("/blood-stock");
+  document.getElementById("blood").innerHTML = blood.map(b => `
+    <div class="stat ${b.status === "Available" ? "green" : "red"}">
+      <div class="v">${esc(b.blood_group)}</div>
+      <div class="l">${b.units} units • ${esc(b.status)}</div></div>`).join("");
+  loadAmb();
+})();
+async function loadAmb() {
+  const rows = await api.get(`/ambulance?patient_id=${pid}`);
+  document.getElementById("ambList").innerHTML = rows.length
+    ? `<div class="table-wrap"><table><thead><tr><th>Type</th><th>Pickup</th><th>Status</th><th>Requested</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${esc(r.emergency_type)}</td><td>${esc(r.pickup_address)}</td>
+      <td><span class="badge red">${esc(r.status)}</span></td><td>${esc(r.created_at)}</td></tr>`).join("")}</tbody></table></div>`
+    : "";
+}
+async function requestAmb() {
+  const pickup_address = document.getElementById("addr").value.trim();
+  const contact_number = document.getElementById("phone").value.trim();
+  if (!pickup_address || !contact_number) { toast("Address and contact number are required", "bad"); return; }
+  try {
+    const r = await api.post("/ambulance", { patient_id: Number(pid), pickup_address, contact_number,
+      emergency_type: document.getElementById("type").value });
+    toast(`Ambulance dispatched — ETA ${r.eta_minutes} minutes`);
+    document.getElementById("addr").value = ""; loadAmb();
+  } catch (e) { toast(e.message, "bad"); }
+}
+</script></body></html>

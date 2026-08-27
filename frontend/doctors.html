@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doctor Directory — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Doctor Directory</h1><p>Browse by department, view profiles and book an appointment.</p></div>
+  <div class="card"><h2>🏥 Departments</h2><div class="chips" id="depts"></div></div>
+  <div class="card">
+    <div class="search-row"><input id="q" placeholder="Search doctor or specialization">
+      <button class="btn" onclick="load()">Search</button>
+      <button class="btn ghost" onclick="dept=null;document.getElementById('q').value='';load()">Reset</button>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a></div>
+    <div class="grid g3" id="docs"></div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("doctors.html"); guard();
+let dept = new URLSearchParams(location.search).get("department_id");
+async function loadDepts() {
+  const d = await api.get("/departments");
+  document.getElementById("depts").innerHTML =
+    `<span class="chip ${!dept ? "active" : ""}" onclick="pick(null)">All departments</span>` +
+    d.map(x => `<span class="chip ${String(dept)===String(x.id)?"active":""}" onclick="pick(${x.id})">
+      ${esc(x.name)} (${x.doctor_count})</span>`).join("");
+}
+function pick(id){ dept = id; loadDepts(); load(); }
+async function load() {
+  const q = document.getElementById("q").value.trim();
+  const p = new URLSearchParams();
+  if (dept) p.set("department_id", dept);
+  if (q) p.set("q", q);
+  const docs = await api.get("/doctors" + (p.toString() ? "?" + p : ""));
+  document.getElementById("docs").innerHTML = docs.length ? docs.map(d => `
+    <div class="doc-card">
+      <div class="name">${esc(d.name)}</div>
+      <div class="muted">${esc(d.specialization)}</div>
+      <div style="margin:9px 0" class="chips">
+        <span class="badge blue">${esc(d.department)}</span>
+        <span class="badge grey">${d.experience_years} yrs exp</span>
+        <span class="badge green">₹${d.consultation_fee}</span>
+        <span class="badge ${d.available ? "green" : "red"}">${d.available ? "Available" : "On leave"}</span>
+      </div>
+      <div class="muted">⭐ ${d.rating}</div>
+      <div class="actions">
+        <a class="btn sm" href="doctor-profile.html?id=${d.id}">View profile</a>
+        <a class="btn sm green" href="book.html?doctor_id=${d.id}">Book</a>
+      </div>
+    </div>`).join("") : `<div class="empty">No doctors found.</div>`;
+}
+loadDepts(); load();
+</script></body></html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient Profile — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main">
+    <div class="page-head"><h1>Patient Profile</h1>
+      <p>Your verified health identity in MediTrack.</p></div>
+
+    <div class="card">
+      <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:center">
+        <img id="photo" class="avatar" alt="Patient photo">
+        <div style="flex:1;min-width:240px">
+          <h2 id="name" style="font-size:22px"></h2>
+          <div class="muted" id="sub"></div>
+          <div style="margin-top:10px;max-width:340px">
+            <div class="muted">Profile completion — <b id="pct"></b></div>
+            <div class="progress"><span id="bar"></span></div>
+          </div>
+        </div>
+        <div id="quickBadges" class="chips"></div>
+      </div>
+    </div>
+
+    <form class="card" id="pf">
+      <h2>📇 Profile details</h2>
+      <div class="form-grid">
+        <div><label>Patient ID</label><input id="patient_code" disabled></div>
+        <div><label>Full Name</label><input name="full_name" disabled></div>
+        <div><label>Date of Birth</label><input type="date" name="dob" disabled></div>
+        <div><label>Age</label><input type="number" name="age" disabled></div>
+        <div><label>Gender</label><select name="gender" disabled><option>Male</option><option>Female</option><option>Other</option></select></div>
+        <div><label>Blood Group</label><select name="blood_group" disabled>
+          <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+          <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select></div>
+        <div><label>Phone</label><input name="phone" disabled></div>
+        <div><label>Email</label><input name="email" type="email" disabled></div>
+        <div class="full"><label>Address</label><textarea name="address" disabled></textarea></div>
+        <div><label>Emergency Contact Name</label><input name="emergency_contact_name" disabled></div>
+        <div><label>Emergency Contact Number</label><input name="emergency_contact_number" disabled></div>
+        <div><label>Allergies</label><textarea name="allergies" disabled></textarea></div>
+        <div><label>Existing Conditions</label><textarea name="conditions" disabled></textarea></div>
+        <div><label>Previous Medical History</label><textarea name="previous_history" disabled></textarea></div>
+        <div><label>Current Medications</label><textarea name="current_medications" disabled></textarea></div>
+        <div><label>Registration Date</label><input id="regdate" disabled></div>
+        <div class="full" id="photoRow" style="display:none"><label>Change profile photo</label><input type="file" id="photoInput" accept="image/*"></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="editBtn">✏️ Edit Profile</button>
+        <button type="button" class="btn green" id="saveBtn" style="display:none">💾 Save</button>
+        <button type="button" class="btn" id="updBtn" style="display:none">🔄 Update</button>
+        <button type="button" class="btn ghost" id="cancelBtn" style="display:none">✖ Cancel</button>
+        <a class="btn ghost" href="dashboard.html">⬅ Back to Dashboard</a>
+      </div>
+    </form>
+  </main>
+</div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("profile.html");
+const pid = guard(); const form = document.getElementById("pf");
+let current = null;
+const fields = [...form.querySelectorAll("[name]")];
+
+async function load() {
+  current = await api.get(`/patients/${pid}`);
+  fields.forEach(f => f.value = current[f.name] ?? "");
+  document.getElementById("patient_code").value = current.patient_code;
+  document.getElementById("regdate").value = current.registered_on;
+  document.getElementById("name").textContent = current.full_name;
+  document.getElementById("sub").textContent =
+    `${current.patient_code} • ${current.age} yrs • ${current.gender} • Registered ${current.registered_on}`;
+  document.getElementById("pct").textContent = current.completion + "%";
+  document.getElementById("bar").style.width = current.completion + "%";
+  document.getElementById("photo").src = current.photo ||
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='104' height='104'><rect width='104' height='104' fill='%23e8f1ff'/><text x='52' y='64' font-size='38' text-anchor='middle' fill='%230b63d6'>👤</text></svg>";
+  document.getElementById("quickBadges").innerHTML =
+    `<span class="badge red">Blood ${esc(current.blood_group)}</span>
+     <span class="badge blue">${esc(current.phone)}</span>
+     <span class="badge green">SOS ${esc(current.emergency_contact_number)}</span>`;
+}
+function setEdit(on) {
+  fields.forEach(f => f.disabled = !on);
+  document.getElementById("photoRow").style.display = on ? "" : "none";
+  document.getElementById("editBtn").style.display = on ? "none" : "";
+  ["saveBtn","updBtn","cancelBtn"].forEach(id => document.getElementById(id).style.display = on ? "" : "none");
+}
+document.getElementById("editBtn").onclick = () => setEdit(true);
+document.getElementById("cancelBtn").onclick = () => { load(); setEdit(false); toast("Changes cancelled"); };
+document.getElementById("photoInput").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 800000) { toast("Image must be under 800 KB", "bad"); return; }
+  const r = new FileReader(); r.onload = ev => document.getElementById("photo").src = ev.target.result;
+  r.readAsDataURL(f);
+});
+async function save() {
+  const d = {};
+  fields.forEach(f => d[f.name] = f.value.trim());
+  d.age = Number(d.age);
+  const src = document.getElementById("photo").src;
+  d.photo = src.startsWith("data:image/svg") ? "" : src;
+  if (!d.full_name || !d.phone || !d.email) { toast("Name, phone and email are required", "bad"); return; }
+  try { await api.put(`/patients/${pid}`, d); await load(); setEdit(false); toast("Profile saved"); }
+  catch (e) { toast(e.message, "bad"); }
+}
+document.getElementById("saveBtn").onclick = save;
+document.getElementById("updBtn").onclick = save;
+load();
+</script>
+</body></html>

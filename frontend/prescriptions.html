@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prescriptions — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Prescriptions</h1><p>View, print or download your prescriptions as PDF.</p></div>
+  <div class="card no-print">
+    <div class="search-row"><input id="q" placeholder="Search prescription code, doctor or medicine" oninput="render()">
+      <button class="btn ghost" onclick="document.getElementById('q').value='';render()">Reset</button>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a></div>
+    <div id="list"></div>
+  </div>
+  <div id="detail"></div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("prescriptions.html");
+const pid = guard(); let rows = [];
+
+function billStatusChip(s) {
+  const map = { Paid: "green", Pending: "grey", "Partially Paid": "blue", Failed: "red", Refunded: "red" };
+  return `<span class="badge ${map[s] || "grey"}">${s}</span>`;
+}
+function billingCell(bill) {
+  if (!bill) return `<span class="muted">No invoice yet</span>`;
+  return `<div>₹${bill.total_amount.toLocaleString("en-IN")} ${billStatusChip(bill.status)}</div>
+    ${bill.balance > 0
+      ? `<a class="btn sm green" style="margin-top:4px" href="billing.html?bill=${bill.id}">Pay ₹${bill.balance.toLocaleString("en-IN")}</a>`
+      : `<a class="btn sm ghost" style="margin-top:4px" href="billing.html?bill=${bill.id}">View Invoice</a>`}`;
+}
+function billingBlock(bill) {
+  if (!bill) return `<div class="card" style="margin-top:14px"><b>🧾 Billing</b>
+    <p class="muted" style="margin:6px 0 0">No invoice has been generated for this consultation yet.</p></div>`;
+  return `<div class="card no-print" style="margin-top:14px">
+    <div class="actions" style="margin-top:0;justify-content:space-between;align-items:center">
+      <div><b>🧾 Invoice ${esc(bill.invoice_number)}</b> ${billStatusChip(bill.status)}
+        <div class="muted">Total ₹${bill.total_amount.toLocaleString("en-IN")} • Paid ₹${bill.amount_paid.toLocaleString("en-IN")} • Balance ₹${bill.balance.toLocaleString("en-IN")}</div></div>
+      <a class="btn ${bill.balance > 0 ? "green" : "ghost"}" href="billing.html?bill=${bill.id}">
+        ${bill.balance > 0 ? `💳 Pay ₹${bill.balance.toLocaleString("en-IN")}` : "View Invoice"}</a>
+    </div></div>`;
+}
+
+function render() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const f = rows.filter(r => !q || (r.prescription_code + r.doctor_name +
+    r.medicines.map(m => m.medicine).join(" ")).toLowerCase().includes(q));
+  document.getElementById("list").innerHTML = f.length
+    ? `<div class="table-wrap"><table><thead><tr><th>Code</th><th>Date</th><th>Doctor</th>
+       <th>Diagnosis</th><th>Medicines</th><th>Follow-up</th><th>Billing</th><th>Actions</th></tr></thead><tbody>` +
+      f.map(p => `<tr><td><b>${esc(p.prescription_code)}</b></td><td>${esc(p.created_at)}</td>
+        <td>${esc(p.doctor_name)}</td><td>${dash(p.diagnosis)}</td>
+        <td>${p.medicines.length} item(s)</td>
+        <td>${p.followup_date ? fmtDate(p.followup_date) : "—"}</td>
+        <td>${billingCell(p.bill)}</td>
+        <td><button class="btn sm" onclick="show(${p.id})">View</button>
+            <button class="btn sm red" onclick="del(${p.id})">Delete</button></td></tr>`).join("")
+      + `</tbody></table></div>`
+    : `<div class="empty">No prescriptions yet. They are created from a consultation.</div>`;
+}
+function show(id) {
+  const p = rows.find(r => r.id === id);
+  document.getElementById("detail").innerHTML = `
+    <div class="card"><div class="rx-print" id="rx">
+      <header><div><div style="font-size:20px;font-weight:800;color:var(--blue-dark)">MediTrack Hospital</div>
+        <div class="muted">Integrated Patient Care Management System</div></div>
+        <div style="text-align:right"><b>${esc(p.prescription_code)}</b><div class="muted">${esc(p.created_at)}</div></div>
+      </header>
+      <div class="grid g2">
+        <div><b>Patient:</b> ${esc(p.patient_name)} (${esc(p.patient_code)})<br>
+          <span class="muted">${p.patient_age} yrs • ${esc(p.patient_gender)}</span></div>
+        <div><b>Doctor:</b> ${esc(p.doctor_name)}<br><span class="muted">${esc(p.department)}</span></div>
+      </div>
+      <p style="margin:12px 0"><b>Diagnosis:</b> ${dash(p.diagnosis)}</p>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Medicine</th><th>Dosage</th>
+        <th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead><tbody>
+        ${p.medicines.map((m, i) => `<tr><td>${i+1}</td><td><b>${esc(m.medicine)}</b></td>
+          <td>${dash(m.dosage)}</td><td>${dash(m.frequency)}</td><td>${dash(m.duration)}</td>
+          <td>${dash(m.notes)}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p style="margin-top:12px"><b>General instructions:</b> ${dash(p.instructions)}</p>
+      <p><b>Follow-up:</b> ${p.followup_date ? fmtDate(p.followup_date) : "Not scheduled"}</p>
+      <p class="muted" style="margin-top:18px;text-align:right">Digitally signed — ${esc(p.doctor_name)}</p>
+    </div>
+    <div class="actions no-print"><button class="btn" onclick="window.print()">🖨 Print</button>
+      <button class="btn green" onclick="pdf()">⬇ Download PDF</button>
+      <button class="btn ghost" onclick="document.getElementById('detail').innerHTML=''">Close</button></div>
+    ${billingBlock(p.bill)}</div>`;
+  document.getElementById("detail").scrollIntoView({ behavior: "smooth" });
+}
+function pdf() {
+  const w = window.open("", "_blank");
+  w.document.write(`<html><head><title>Prescription</title>
+    <link rel="stylesheet" href="css/style.css"></head><body style="padding:24px">
+    ${document.getElementById("rx").outerHTML}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+}
+async function del(id) {
+  if (!confirm("Delete this prescription?")) return;
+  await api.del(`/prescriptions/${id}`); toast("Prescription deleted"); load();
+}
+async function load() {
+  rows = await api.get(`/prescriptions?patient_id=${pid}`); render();
+  const pre = new URLSearchParams(location.search).get("id");
+  if (pre && rows.some(r => String(r.id) === pre)) show(Number(pre));
+}
+load();
+</script></body></html>

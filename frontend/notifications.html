@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notifications — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>🔔 Notifications</h1>
+    <p>Appointment confirmations, prescription updates and reminders — all in one place.</p></div>
+
+  <div class="card">
+    <div class="actions" style="margin-top:0;margin-bottom:14px">
+      <button class="btn ghost sm" onclick="markAllRead()">Mark all as read</button>
+    </div>
+    <div id="list"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("notifications.html");
+const pid = guard();
+let rows = [];
+
+function render() {
+  document.getElementById("list").innerHTML = rows.length
+    ? rows.map(n => `<div style="padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start;${n.is_read ? "opacity:.65" : ""}">
+        <span class="badge ${n.category === 'danger' ? 'red' : n.category === 'success' ? 'green' : n.category === 'warning' ? 'red' : 'blue'}">${esc(n.category)}</span>
+        <div style="flex:1">${esc(n.message)}<div class="muted">${esc(n.created_at)}</div></div>
+        ${n.is_read ? "" : `<button class="btn sm ghost" onclick="markRead(${n.id})">Mark read</button>`}
+      </div>`).join("")
+    : `<div class="empty">You're all caught up.</div>`;
+}
+
+async function markRead(id) {
+  await api.put(`/notifications/${id}/read`);
+  rows = rows.map(n => n.id === id ? { ...n, is_read: true } : n);
+  render();
+}
+async function markAllRead() {
+  const unread = rows.filter(n => !n.is_read);
+  await Promise.all(unread.map(n => api.put(`/notifications/${n.id}/read`)));
+  rows = rows.map(n => ({ ...n, is_read: true }));
+  render();
+  toast("All notifications marked as read");
+}
+
+async function load() {
+  try {
+    rows = await api.get(`/patients/${pid}/notifications`);
+    render();
+  } catch (e) {
+    document.getElementById("list").innerHTML = "";
+    document.getElementById("list").appendChild(errorState(e.message, load));
+  }
+}
+load();
+</script>
+</body></html>

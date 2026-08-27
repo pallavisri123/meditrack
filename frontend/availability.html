@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doctor Availability — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Doctor Availability</h1><p>Live slot board across every department.</p></div>
+  <div class="card">
+    <div class="search-row">
+      <input id="q" placeholder="Filter by doctor, department or date" oninput="render()">
+      <select id="st" onchange="render()"><option value="">All statuses</option><option>Available</option><option>Booked</option></select>
+      <button class="btn ghost" onclick="document.getElementById('q').value='';document.getElementById('st').value='';render()">Reset</button>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a>
+    </div>
+    <div id="tbl"></div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("availability.html"); guard();
+let rows = [];
+function render() {
+  const q = document.getElementById("q").value.toLowerCase();
+  const st = document.getElementById("st").value;
+  const f = rows.filter(r => (!st || r.status === st) &&
+    (!q || r.doctor.toLowerCase().includes(q) || r.department.toLowerCase().includes(q)
+      || r.date.includes(q) || r.day.toLowerCase().includes(q)));
+  document.getElementById("tbl").innerHTML = f.length
+    ? `<div class="table-wrap"><table><thead><tr><th>Doctor</th><th>Department</th><th>Day</th>
+       <th>Date</th><th>Time slot</th><th>Status</th><th></th></tr></thead><tbody>` +
+      f.slice(0, 300).map(r => `<tr><td>${esc(r.doctor)}</td><td>${esc(r.department)}</td>
+        <td>${esc(r.day)}</td><td>${fmtDate(r.date)}</td><td>${esc(r.time)}</td>
+        <td><span class="badge ${r.status === "Available" ? "green" : "red"}">${r.status}</span></td>
+        <td>${r.status === "Available"
+          ? `<a class="btn sm" href="book.html?doctor_id=${r.doctor_id}&date=${r.date}&time=${r.time}">Book</a>` : ""}</td></tr>`).join("")
+      + `</tbody></table></div>`
+    : `<div class="empty">No slots match your filter.</div>`;
+}
+api.get("/availability").then(r => { rows = r; render(); });
+</script></body></html>

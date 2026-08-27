@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lab Tests — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>🧪 Lab Tests</h1>
+    <p>Track every lab test ordered for you, from pending to completed, with results as they arrive.</p></div>
+
+  <div class="grid g3" id="stats"><div class="skel-row"></div></div>
+
+  <div class="card" style="margin-top:18px">
+    <h2>Your lab tests</h2>
+    <div id="list"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("lab-tests.html");
+const pid = guard();
+
+function statusChip(s) {
+  const cls = s === "Completed" ? "green" : s === "In Progress" ? "blue" : "grey";
+  return `<span class="badge ${cls}">${s}</span>`;
+}
+
+async function load() {
+  try {
+    const rows = await api.get(`/patients/${pid}/lab-tests`);
+    const pending = rows.filter(r => r.status === "Pending").length;
+    const progress = rows.filter(r => r.status === "In Progress").length;
+    const done = rows.filter(r => r.status === "Completed").length;
+    document.getElementById("stats").innerHTML = `
+      <div class="stat"><div class="v">${pending}</div><div class="l">Pending</div></div>
+      <div class="stat"><div class="v">${progress}</div><div class="l">In Progress</div></div>
+      <div class="stat green"><div class="v">${done}</div><div class="l">Completed</div></div>`;
+
+    document.getElementById("list").innerHTML = rows.length
+      ? `<div class="table-wrap"><table><thead><tr><th>Test</th><th>Ordered By</th><th>Ordered On</th>
+          <th>Status</th><th>Result Date</th><th>Notes</th></tr></thead><tbody>` +
+        rows.map(t => `<tr><td><b>${esc(t.test_name)}</b><div class="muted">${esc(t.test_code)}</div></td>
+          <td>${dash(t.doctor_name)}</td><td>${fmtDate(t.ordered_date)}</td>
+          <td>${statusChip(t.status)}</td><td>${t.result_date ? fmtDate(t.result_date) : "—"}</td>
+          <td>${dash(t.result_summary)}</td></tr>`).join("") + `</tbody></table></div>`
+      : `<div class="empty">No lab tests available.<div class="muted" style="margin-top:6px">Your doctor will order tests during a consultation when needed.</div></div>`;
+  } catch (e) {
+    document.getElementById("list").innerHTML = "";
+    document.getElementById("list").appendChild(errorState(e.message, load));
+  }
+}
+load();
+</script>
+</body></html>

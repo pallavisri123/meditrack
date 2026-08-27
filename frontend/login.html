@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Log In — MediTrack</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-side">
+    <div class="logo-big">M+</div>
+    <h1>Welcome back to MediTrack.</h1>
+    <p>Your integrated patient care dashboard — appointments, prescriptions, lab results and your full
+       medical history, always in sync with your care team.</p>
+    <ul>
+      <li>✅ Bank-grade authentication &amp; encrypted sessions</li>
+      <li>✅ Real-time appointment &amp; prescription tracking</li>
+      <li>✅ One record, connected across every visit</li>
+    </ul>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-card">
+      <h2>Log in to your account</h2>
+      <div class="sub">Enter your credentials to access your health dashboard.</div>
+      <div id="alertBox"></div>
+
+      <form id="loginForm" novalidate>
+        <div class="auth-field">
+          <label>Email address</label>
+          <input type="email" name="email" id="email" autocomplete="username" placeholder="you@example.com">
+          <span class="err" id="err_email"></span>
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input type="password" name="password" id="password" autocomplete="current-password" placeholder="Enter your password">
+            <button type="button" class="pw-toggle" id="pwToggle">👁</button>
+          </div>
+          <span class="err" id="err_password"></span>
+        </div>
+        <div class="auth-row">
+          <label style="display:flex;align-items:center;gap:7px;font-weight:500">
+            <input type="checkbox" id="remember" style="width:15px;height:15px"> Remember me
+          </label>
+          <a href="forgot-password.html">Forgot password?</a>
+        </div>
+        <button type="submit" class="auth-submit" id="submitBtn">Log In</button>
+      </form>
+
+      <div class="auth-foot">Don't have an account? <a href="signup.html">Create one</a></div>
+    </div>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script>
+if (Session.isAuthenticated()) location.href = "dashboard.html";
+
+const params = new URLSearchParams(location.search);
+if (params.get("expired")) showAlert("Your session expired. Please log in again.", "info");
+if (params.get("reset")) showAlert("Password updated. Please log in with your new password.", "ok");
+if (params.get("registered")) showAlert("Account created successfully. Please log in.", "ok");
+
+function showAlert(msg, type) {
+  document.getElementById("alertBox").innerHTML = `<div class="alert ${type}">${msg}</div>`;
+}
+
+document.getElementById("pwToggle").onclick = () => {
+  const f = document.getElementById("password");
+  f.type = f.type === "password" ? "text" : "password";
+};
+
+function setErr(id, msg) { document.getElementById("err_" + id).textContent = msg || ""; }
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setErr("email", ""); setErr("password", "");
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  let ok = true;
+  if (!/^\S+@\S+\.\S+$/.test(email)) { setErr("email", "Enter a valid email address"); ok = false; }
+  if (!password) { setErr("password", "Password is required"); ok = false; }
+  if (!ok) return;
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Logging in…`;
+  try {
+    const res = await api.post("/auth/login", {
+      email, password, remember_me: document.getElementById("remember").checked,
+    });
+    Session.set(res.access_token, res.patient);
+    showAlert("Login successful — redirecting…", "ok");
+    setTimeout(() => location.href = "dashboard.html", 500);
+  } catch (err) {
+    showAlert(err.message || "Incorrect email or password", "bad");
+    btn.disabled = false;
+    btn.textContent = "Log In";
+  }
+});
+</script>
+</body>
+</html>

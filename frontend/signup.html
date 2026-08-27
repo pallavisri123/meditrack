@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create Account — MediTrack</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-side">
+    <div class="logo-big">M+</div>
+    <h1>Your care, connected in one place.</h1>
+    <p>Create your MediTrack account to book appointments, track prescriptions, view lab results and
+       keep your full medical history in sync with your doctors.</p>
+    <ul>
+      <li>✅ Free patient account, set up in under a minute</li>
+      <li>✅ Your data stays private and encrypted</li>
+      <li>✅ Already have a record with us? We'll link it automatically</li>
+    </ul>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-card">
+      <h2>Create your patient account</h2>
+      <div class="sub">Step 1 of 2 — Signup, then log in to reach your dashboard.</div>
+      <div id="alertBox"></div>
+
+      <form id="signupForm" novalidate>
+        <div class="auth-field">
+          <label>Full Name</label>
+          <input name="full_name" id="full_name" placeholder="e.g. Ananya Sharma">
+          <span class="err" id="err_full_name"></span>
+        </div>
+        <div class="auth-field">
+          <label>Email address</label>
+          <input type="email" name="email" id="email" autocomplete="username" placeholder="you@example.com">
+          <span class="err" id="err_email"></span>
+        </div>
+        <div class="auth-field">
+          <label>Mobile Number</label>
+          <input name="mobile" id="mobile" maxlength="15" placeholder="10-digit mobile number">
+          <span class="err" id="err_mobile"></span>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:14px">
+          <div class="auth-field">
+            <label>Date of Birth</label>
+            <input type="date" name="dob" id="dob">
+            <span class="err" id="err_dob"></span>
+          </div>
+          <div class="auth-field">
+            <label>Gender</label>
+            <select name="gender" id="gender">
+              <option value="">Select</option><option>Male</option><option>Female</option><option>Other</option>
+            </select>
+            <span class="err" id="err_gender"></span>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input type="password" name="password" id="password" autocomplete="new-password" placeholder="Create a strong password">
+            <button type="button" class="pw-toggle" id="pwToggle">👁</button>
+          </div>
+          <div class="pw-strength"><span id="b1"></span><span id="b2"></span><span id="b3"></span><span id="b4"></span></div>
+          <span class="err" id="err_password"></span>
+        </div>
+        <div class="auth-field">
+          <label>Confirm Password</label>
+          <div class="pw-wrap">
+            <input type="password" name="confirm_password" id="confirm_password" autocomplete="new-password" placeholder="Re-enter your password">
+            <button type="button" class="pw-toggle" id="pwToggle2">👁</button>
+          </div>
+          <span class="err" id="err_confirm_password"></span>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="accept_terms">
+          <label for="accept_terms">I agree to the <a href="#">Terms &amp; Conditions</a> and <a href="#">Privacy Policy</a> of MediTrack.</label>
+        </div>
+        <span class="err" id="err_accept_terms" style="display:block;margin-top:-12px;margin-bottom:12px"></span>
+        <button type="submit" class="auth-submit" id="submitBtn">Create Account</button>
+      </form>
+
+      <div class="auth-foot">Already have an account? <a href="login.html">Log in</a></div>
+    </div>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script>
+if (Session.isAuthenticated()) location.href = "dashboard.html";
+
+function showAlert(msg, type) {
+  document.getElementById("alertBox").innerHTML = `<div class="alert ${type}">${msg}</div>`;
+}
+function setErr(id, msg) { document.getElementById("err_" + id).textContent = msg || ""; }
+
+["pwToggle", "pwToggle2"].forEach((id, i) => {
+  document.getElementById(id).onclick = () => {
+    const f = document.getElementById(i === 0 ? "password" : "confirm_password");
+    f.type = f.type === "password" ? "text" : "password";
+  };
+});
+
+document.getElementById("password").addEventListener("input", (e) => {
+  const v = e.target.value;
+  const checks = [v.length >= 8, /[A-Z]/.test(v), /[0-9]/.test(v), /[^A-Za-z0-9]/.test(v)];
+  const score = checks.filter(Boolean).length;
+  ["b1", "b2", "b3", "b4"].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = i < score ? `on${score}` : "";
+  });
+});
+
+function validate(d) {
+  let ok = true;
+  ["full_name","email","mobile","dob","gender","password","confirm_password","accept_terms"].forEach(k => setErr(k, ""));
+  if (!d.full_name || d.full_name.trim().length < 3) { setErr("full_name", "Enter your full name (min 3 characters)"); ok = false; }
+  if (!/^\S+@\S+\.\S+$/.test(d.email || "")) { setErr("email", "Enter a valid email address"); ok = false; }
+  if (!/^[0-9+\-\s]{10,15}$/.test(d.mobile || "")) { setErr("mobile", "Enter a valid 10-15 digit mobile number"); ok = false; }
+  if (!d.dob) { setErr("dob", "Date of birth is required"); ok = false; }
+  else if (new Date(d.dob) > new Date()) { setErr("dob", "Date of birth cannot be in the future"); ok = false; }
+  if (!d.gender) { setErr("gender", "Select your gender"); ok = false; }
+  const pw = d.password || "";
+  if (pw.length < 8 || !/[A-Z]/.test(pw) || !/[a-z]/.test(pw) || !/[0-9]/.test(pw) || !/[^A-Za-z0-9]/.test(pw)) {
+    setErr("password", "Min 8 characters, with upper, lower, number & symbol"); ok = false;
+  }
+  if (d.password !== d.confirm_password) { setErr("confirm_password", "Passwords do not match"); ok = false; }
+  if (!d.accept_terms) { setErr("accept_terms", "You must accept the Terms & Conditions"); ok = false; }
+  return ok;
+}
+
+document.getElementById("signupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const d = {
+    full_name: document.getElementById("full_name").value.trim(),
+    email: document.getElementById("email").value.trim(),
+    mobile: document.getElementById("mobile").value.trim(),
+    dob: document.getElementById("dob").value,
+    gender: document.getElementById("gender").value,
+    password: document.getElementById("password").value,
+    confirm_password: document.getElementById("confirm_password").value,
+    accept_terms: document.getElementById("accept_terms").checked,
+  };
+  if (!validate(d)) { showAlert("Please fix the highlighted fields", "bad"); return; }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span> Creating account…`;
+  try {
+    await api.post("/auth/signup", d);
+    showAlert("Account created! Redirecting to login…", "ok");
+    setTimeout(() => location.href = "login.html?registered=1", 800);
+  } catch (err) {
+    showAlert(err.message || "Could not create account", "bad");
+    btn.disabled = false;
+    btn.textContent = "Create Account";
+  }
+});
+</script>
+</body>
+</html>

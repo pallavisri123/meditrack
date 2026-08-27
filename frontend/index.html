@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient Directory (Legacy) — MediTrack</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main">
+    <div class="page-head">
+      <h1>Patient Directory (Legacy)</h1>
+      <p>Legacy record-management tool, preserved for backward compatibility. New patients should use
+         <a href="signup.html" style="color:var(--blue);font-weight:700">Sign Up</a> to create a full account with login access.</p>
+    </div>
+
+    <div class="card no-print">
+      <h2>🔍 Already registered?</h2>
+      <div class="search-row">
+        <input id="searchQ" placeholder="Search by Patient ID, name, phone or email">
+        <button class="btn" onclick="searchPatients()">Search</button>
+        <button class="btn ghost" onclick="document.getElementById('searchQ').value='';searchPatients()">Reset</button>
+      </div>
+      <div id="searchResults"></div>
+    </div>
+
+    <form class="card" id="regForm" novalidate>
+      <h2>🧾 Registration form</h2>
+
+      <fieldset><legend>Identity</legend>
+        <div class="form-grid">
+          <div><label>Patient ID</label><input id="patient_code" value="Auto-generated" disabled></div>
+          <div><label>Full Name <span class="req">*</span></label><input name="full_name"><span class="err"></span></div>
+          <div><label>Date of Birth <span class="req">*</span></label><input type="date" name="dob" id="dob"><span class="err"></span></div>
+          <div><label>Age <span class="req">*</span></label><input type="number" name="age" id="age" min="0" max="120"><span class="err"></span></div>
+          <div><label>Gender <span class="req">*</span></label>
+            <select name="gender"><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select><span class="err"></span></div>
+          <div><label>Blood Group <span class="req">*</span></label>
+            <select name="blood_group"><option value="">Select</option>
+              <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+              <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select><span class="err"></span></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Contact</legend>
+        <div class="form-grid">
+          <div><label>Phone <span class="req">*</span></label><input name="phone" maxlength="15"><span class="err"></span></div>
+          <div><label>Email <span class="req">*</span></label><input name="email" type="email"><span class="err"></span></div>
+          <div class="full"><label>Address</label><textarea name="address"></textarea><span class="err"></span></div>
+          <div><label>Emergency Contact Name <span class="req">*</span></label><input name="emergency_contact_name"><span class="err"></span></div>
+          <div><label>Emergency Contact Number <span class="req">*</span></label><input name="emergency_contact_number" maxlength="15"><span class="err"></span></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Medical information</legend>
+        <div class="form-grid">
+          <div><label>Allergies</label><textarea name="allergies" placeholder="e.g. Penicillin, dust"></textarea></div>
+          <div><label>Existing Medical Conditions</label><textarea name="conditions" placeholder="e.g. Asthma"></textarea></div>
+          <div><label>Previous Medical History</label><textarea name="previous_history"></textarea></div>
+          <div><label>Current Medications</label><textarea name="current_medications"></textarea></div>
+        </div>
+      </fieldset>
+
+      <fieldset><legend>Profile photo</legend>
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <img id="preview" class="avatar" alt="Profile preview"
+               src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='104' height='104'><rect width='104' height='104' fill='%23e8f1ff'/><text x='52' y='62' font-size='34' text-anchor='middle' fill='%230b63d6'>+</text></svg>">
+          <input type="file" id="photo" accept="image/*" style="max-width:320px">
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" class="btn green" id="saveBtn">💾 Save &amp; Continue</button>
+        <button type="button" class="btn" id="updateBtn" style="display:none" onclick="submitForm(true)">✏️ Update</button>
+        <button type="button" class="btn ghost" onclick="resetForm()">♻️ Reset</button>
+        <button type="button" class="btn ghost" onclick="cancelEdit()">✖ Cancel</button>
+        <button type="button" class="btn red" id="deleteBtn" style="display:none" onclick="deletePatient()">🗑 Delete</button>
+      </div>
+    </form>
+  </main>
+</div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("index.html");
+let editingId = null;
+const form = document.getElementById("regForm");
+
+document.getElementById("dob").addEventListener("change", e => {
+  const d = new Date(e.target.value);
+  if (!isNaN(d)) {
+    let a = new Date().getFullYear() - d.getFullYear();
+    const m = new Date().getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && new Date().getDate() < d.getDate())) a--;
+    if (a >= 0) document.getElementById("age").value = a;
+  }
+});
+
+document.getElementById("photo").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 800000) { toast("Please choose an image under 800 KB", "bad"); e.target.value = ""; return; }
+  const r = new FileReader();
+  r.onload = ev => document.getElementById("preview").src = ev.target.result;
+  r.readAsDataURL(f);
+});
+
+function setErr(name, msg) {
+  const el = form.querySelector(`[name="${name}"]`);
+  if (el) el.parentElement.querySelector(".err").textContent = msg || "";
+}
+function collect() {
+  const d = {};
+  new FormData(form).forEach((v, k) => d[k] = v.trim ? v.trim() : v);
+  d.age = Number(d.age || 0);
+  const src = document.getElementById("preview").src;
+  d.photo = src.startsWith("data:image/svg") ? "" : src;
+  return d;
+}
+function validate(d) {
+  let ok = true;
+  ["full_name","dob","age","gender","blood_group","phone","email","emergency_contact_name","emergency_contact_number"]
+    .forEach(k => setErr(k, ""));
+  const need = (k, msg) => { if (!d[k]) { setErr(k, msg); ok = false; } };
+  need("full_name", "Full name is required");
+  if (d.full_name && d.full_name.length < 3) { setErr("full_name", "Enter at least 3 characters"); ok = false; }
+  need("dob", "Date of birth is required");
+  if (d.dob && new Date(d.dob) > new Date()) { setErr("dob", "Date of birth cannot be in the future"); ok = false; }
+  if (!d.age || d.age < 0 || d.age > 120) { setErr("age", "Enter a valid age (0-120)"); ok = false; }
+  need("gender", "Select gender"); need("blood_group", "Select blood group");
+  if (!/^[0-9+\-\s]{10,15}$/.test(d.phone || "")) { setErr("phone", "Enter a valid 10-15 digit phone"); ok = false; }
+  if (!/^\S+@\S+\.\S+$/.test(d.email || "")) { setErr("email", "Enter a valid email address"); ok = false; }
+  need("emergency_contact_name", "Emergency contact name is required");
+  if (!/^[0-9+\-\s]{10,15}$/.test(d.emergency_contact_number || "")) {
+    setErr("emergency_contact_number", "Enter a valid emergency number"); ok = false; }
+  return ok;
+}
+
+form.addEventListener("submit", e => { e.preventDefault(); submitForm(false); });
+
+async function submitForm(isUpdate) {
+  const d = collect();
+  if (!validate(d)) { toast("Please fix the highlighted fields", "bad"); return; }
+  try {
+    const saved = (isUpdate && editingId)
+      ? await api.put(`/patients/${editingId}`, d)
+      : await api.post("/patients", d);
+    toast(isUpdate ? "Patient record updated" : `Record saved — ${saved.patient_code}. Use Sign Up to create a login for this patient.`);
+    resetForm(); searchPatients();
+  } catch (err) { toast(err.message, "bad"); }
+}
+
+function resetForm() {
+  form.reset(); editingId = null;
+  document.getElementById("patient_code").value = "Auto-generated";
+  document.getElementById("preview").src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='104' height='104'><rect width='104' height='104' fill='%23e8f1ff'/><text x='52' y='62' font-size='34' text-anchor='middle' fill='%230b63d6'>+</text></svg>";
+  document.getElementById("updateBtn").style.display = "none";
+  document.getElementById("deleteBtn").style.display = "none";
+  document.getElementById("saveBtn").style.display = "";
+  form.querySelectorAll(".err").forEach(e => e.textContent = "");
+}
+function cancelEdit() { if (Session.id) location.href = "dashboard.html"; else resetForm(); }
+
+async function searchPatients() {
+  const q = document.getElementById("searchQ").value.trim();
+  const box = document.getElementById("searchResults");
+  const rows = await api.get("/patients" + (q ? `?q=${encodeURIComponent(q)}` : ""));
+  if (!rows.length) { box.innerHTML = `<div class="empty">No patient records found.</div>`; return; }
+  box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Age/Gender</th>
+    <th>Phone</th><th>Blood</th><th>Actions</th></tr></thead><tbody>` +
+    rows.map(p => `<tr><td><b>${esc(p.patient_code)}</b></td><td>${esc(p.full_name)}</td>
+      <td>${p.age} / ${esc(p.gender)}</td><td>${esc(p.phone)}</td>
+      <td><span class="badge red">${esc(p.blood_group)}</span></td>
+      <td><button class="btn sm" onclick="openPatient(${p.id})">Open</button>
+          <button class="btn sm ghost" onclick="loadForEdit(${p.id})">Edit</button></td></tr>`).join("") +
+    `</tbody></table></div>`;
+}
+function openPatient(id) { loadForEdit(id); }
+
+async function loadForEdit(id) {
+  const p = await api.get(`/patients/${id}`);
+  editingId = id;
+  Object.entries(p).forEach(([k, v]) => {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (el) el.value = v ?? "";
+  });
+  document.getElementById("patient_code").value = p.patient_code;
+  if (p.photo) document.getElementById("preview").src = p.photo;
+  document.getElementById("saveBtn").style.display = "none";
+  document.getElementById("updateBtn").style.display = "";
+  document.getElementById("deleteBtn").style.display = "";
+  window.scrollTo({ top: 400, behavior: "smooth" });
+  toast("Loaded record for editing");
+}
+async function deletePatient() {
+  if (!editingId || !confirm("Delete this patient and all linked records?")) return;
+  await api.del(`/patients/${editingId}`);
+  Session.clear(); resetForm(); searchPatients();
+  toast("Patient deleted");
+}
+searchPatients();
+</script>
+</body></html>

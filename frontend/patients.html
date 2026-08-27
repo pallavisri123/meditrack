@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient Management — MediTrack</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="layout"><nav class="sidebar" id="sidebar"></nav>
+<main class="main">
+  <div class="page-head"><h1>Patient Management</h1>
+    <p>Search, view, update or remove patient records. Search by Patient ID, name, phone or email.</p></div>
+  <div class="card">
+    <div class="search-row">
+      <input id="q" placeholder="Search Patient ID / Name / Phone / Email">
+      <button class="btn" onclick="load()">🔍 Search</button>
+      <button class="btn ghost" onclick="document.getElementById('q').value='';load()">♻️ Reset</button>
+      <a class="btn green" href="index.html">＋ Register new patient</a>
+      <a class="btn ghost" href="dashboard.html">⬅ Dashboard</a>
+    </div>
+    <div id="list"></div>
+  </div>
+</main></div>
+<script src="js/api.js"></script><script src="js/app.js"></script>
+<script>
+buildShell("patients.html"); guard();
+async function load() {
+  const q = document.getElementById("q").value.trim();
+  const rows = await api.get("/patients" + (q ? `?q=${encodeURIComponent(q)}` : ""));
+  document.getElementById("list").innerHTML = rows.length
+    ? `<div class="table-wrap"><table><thead><tr><th></th><th>Patient ID</th><th>Name</th><th>Age/Gender</th>
+       <th>Blood</th><th>Phone</th><th>Email</th><th>Profile</th><th>Actions</th></tr></thead><tbody>` +
+      rows.map(p => `<tr>
+        <td><img class="avatar sm" src="${p.photo || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42'><rect width='42' height='42' fill='%23e8f1ff'/></svg>"}" alt=""></td>
+        <td><b>${esc(p.patient_code)}</b></td><td>${esc(p.full_name)}</td>
+        <td>${p.age} / ${esc(p.gender)}</td><td><span class="badge red">${esc(p.blood_group)}</span></td>
+        <td>${esc(p.phone)}</td><td>${esc(p.email)}</td>
+        <td><div class="progress" style="width:80px"><span style="width:${p.completion}%"></span></div>${p.completion}%</td>
+        <td><button class="btn sm ghost" onclick="upd(${p.id})">Edit in Directory</button>
+            <button class="btn sm red" onclick="del(${p.id},'${esc(p.full_name)}')">Delete</button></td></tr>`).join("")
+      + `</tbody></table></div>`
+    : `<div class="empty">No matching patient records.</div>`;
+}
+function upd(id){ location.href = "index.html"; }
+async function del(id, name) {
+  if (!confirm(`Delete ${name} and all linked appointments, consultations and prescriptions?`)) return;
+  await api.del(`/patients/${id}`);
+  if (String(Session.id) === String(id)) Session.clear();
+  toast("Patient deleted"); load();
+}
+load();
+</script></body></html>
